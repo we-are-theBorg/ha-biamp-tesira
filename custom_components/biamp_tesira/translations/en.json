@@ -1,0 +1,28 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Biamp Tesira",
+        "data": {
+          "hostname": "Hostname or IP Address",
+          "port": "SSH Port",
+          "username": "SSH Username",
+          "password": "SSH Password",
+          "host_key_check": "Verify SSH Host Key",
+          "block_map_path": "Block Map Cache Path (optional)"
+        },
+        "data_description": {
+          "host_key_check": "Disable to trust the DSP on first connect (recommended for most setups)",
+          "block_map_path": "Path to cache DSP block map for faster restarts. Leave blank for auto-generated path."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the DSP. Check hostname, port, and credentials.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Tesira DSP is already configured."
+    }
+  }
+}

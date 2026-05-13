@@ -1,0 +1,4 @@
+*.bmap
+__pycache__/
+*.pyc
+.env
