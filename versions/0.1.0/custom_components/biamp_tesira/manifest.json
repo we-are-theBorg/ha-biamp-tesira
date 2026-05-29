@@ -1,0 +1,10 @@
+{
+  "domain": "biamp_tesira",
+  "name": "Biamp Tesira",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://github.com/enp6s0/pytesira",
+  "requirements": ["pytesira>=0.9.0"],
+  "iot_class": "local_push",
+  "codeowners": []
+}

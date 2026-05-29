@@ -45,3 +45,38 @@ Handle block_map staleness by catching exceptions and forcing re-scan.
 - Implement unique_id based on device serial_number + block name + channel
 - Use hass.config_entries for persistence
 - Target HA 2024.x+ APIs
+
+## Parlé Beamtracking Module
+
+### TTP Subscriptions (add to coordinator.py alongside DSP blocks)
+- `<instance_tag> subscribe audioSources 1 <label> 300`
+  Returns: azimuth (0-360°, CCW from Biamp logo) + intensity (0.0-1.0) per beam
+  Active talker threshold: intensity > 0.5
+- `<instance_tag> subscribe segmentsActive 1 <label> 300`
+  Returns: which zone segment is active (coarse)
+- `<instance_tag> get lobeData` (firmware 4.11.2+)
+  Returns: azimuth + elevation per beam
+
+### New entities to create (sensor.py additions)
+For each Parlé block discovered:
+- Primary azimuth sensor (unit: °, state_class: MEASUREMENT)
+  Extra attributes: full beams array, elevation, mic_model, instance_tag
+- Intensity sensor (unit: None, 0.0-1.0)
+- Active zone sensor (text state: zone name from config mapping)
+- Talker count sensor (int, beams above threshold)
+
+### Custom events to fire
+Event: biamp_tesira_talker_location
+Payload: instance_tag, room, azimuth, intensity, elevation, active_beams, timestamp
+Fire when: intensity > 0.5 and azimuth change > 5° (debounce)
+
+### Voice pipeline integration
+Listen to assist_pipeline_run_event (type: run-start)
+Snapshot beam state at pipeline start time → store in dict keyed by run_id
+Expose as input_text.current_talker_zone for use in LLM system prompts
+Create template sensor mapping azimuth → named zone (configurable in config flow)
+
+### Zone mapping (configurable per installation)
+Store azimuth→zone mapping in config entry options
+Default: 4 quadrants named N/S/E/W
+Allow named zones: {"window": [0,90], "door": [90,180], ...}
