@@ -35,10 +35,14 @@
   "options": {
     "step": {
       "init": {
-        "title": "Biamp Tesira Block Types",
-        "description": "Uncheck block types to exclude them. Changes take effect after the integration reloads automatically.",
+        "title": "Biamp Tesira Options",
+        "description": "Configure block types and preset buttons. Changes take effect after the integration reloads automatically.",
         "data": {
-          "enabled_block_types": "Active Block Types"
+          "enabled_block_types": "Active Block Types",
+          "presets": "Preset Names"
+        },
+        "data_description": {
+          "presets": "Enter one preset name per line (exactly as defined in the Tesira design file). Each name becomes a button entity in Home Assistant."
         }
       }
     }
