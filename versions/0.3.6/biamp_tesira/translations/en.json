@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Biamp Tesira",
+        "data": {
+          "hostname": "Hostname or IP Address",
+          "port": "SSH Port",
+          "username": "SSH Username",
+          "password": "SSH Password",
+          "host_key_check": "Verify SSH Host Key",
+          "block_map_path": "Block Map Cache Path (optional)"
+        },
+        "data_description": {
+          "host_key_check": "Disable to trust the DSP on first connect (recommended for most setups)",
+          "block_map_path": "Path to cache DSP block map for faster restarts. Leave blank for auto-generated path."
+        }
+      },
+      "blocks": {
+        "title": "Block Type Configuration",
+        "description": "Select which Tesira DSP block types to load. Unchecked types are skipped entirely — not subscribed to and not added to Home Assistant. Reduces startup time on large systems.",
+        "data": {
+          "enabled_block_types": "Active Block Types"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the DSP. Check hostname, port, and credentials.",
+      "unknown": "Unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This Tesira DSP is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Biamp Tesira Options",
+        "description": "Configure block types and preset buttons. Changes take effect after the integration reloads automatically.",
+        "data": {
+          "enabled_block_types": "Active Block Types",
+          "presets": "Preset Names"
+        },
+        "data_description": {
+          "presets": "Comma-separated preset names, exactly as defined in the Tesira design file. Each name becomes a button entity in Home Assistant. Example: Main Spaces Only, Whole Home"
+        }
+      }
+    }
+  }
+}
