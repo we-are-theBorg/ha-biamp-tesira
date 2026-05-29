@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -169,8 +170,14 @@ class BiampTesiraCoordinator:
     # ------------------------------------------------------------------
 
     def _connect(self) -> None:
+        import warnings as _warnings
         from pytesira.dsp import DSP
         from pytesira.transport.ssh import SSH
+        # Suppress paramiko's UserWarning about unknown host keys when
+        # host_key_check is disabled — the key is added by AutoAddPolicy.
+        _warnings.filterwarnings(
+            "ignore", category=UserWarning, module="paramiko"
+        )
 
         cfg = self.entry.data
         block_map_path = cfg.get(CONF_BLOCK_MAP_PATH) or self._default_block_map_path()
