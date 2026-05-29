@@ -43,10 +43,13 @@ class BiampTesiraBlockEntity(BiampTesiraEntity):
     """
     Entity tied to a specific DSP block.
 
-    Creates a *child* HA device for the block (linked to the parent DSP device
-    via `via_device`).  This groups all entities for the same block together in
-    the HA device list, separated by block rather than mixing everything under
-    one flat DSP device.
+    Creates a child HA device per block (linked to the parent DSP via
+    `via_device`) so that HA groups all controls for the same block together
+    in the device list rather than mixing everything under one flat device.
+
+    Works for all block types — standard (LevelControl, MuteControl, …) and
+    Parlé (ParleBeamtracking) alike, since both live in dsp.blocks after the
+    fork installs the proper pytesira module.
     """
 
     def __init__(self, coordinator: BiampTesiraCoordinator, block_id: str) -> None:
@@ -62,46 +65,11 @@ class BiampTesiraBlockEntity(BiampTesiraEntity):
         dsp = self._coordinator.dsp
         block = self._block
         return DeviceInfo(
-            # Sub-device: one HA device per DSP block
             identifiers={(DOMAIN, f"{dsp.serial_number}_{self._block_id}")},
             name=self._block_id,
             manufacturer="Biamp",
+            # Model = pytesira class name (e.g. "LevelControl", "ParleBeamtracking")
             model=type(block).__name__,
-            # Link back to the parent DSP device so HA knows the hierarchy
-            via_device=(DOMAIN, dsp.serial_number),
-        )
-
-    async def async_added_to_hass(self) -> None:
-        self.async_on_remove(
-            self._coordinator.async_add_block_listener(
-                self._block_id, self.async_write_ha_state
-            )
-        )
-
-
-class BiampParleBlockEntity(BiampTesiraEntity):
-    """
-    Entity tied to a Parlé Beamtracking block (not a pytesira-native block).
-    Creates a child HA device for the Parlé mic linked to the parent DSP.
-    """
-
-    def __init__(self, coordinator: BiampTesiraCoordinator, block_id: str) -> None:
-        super().__init__(coordinator)
-        self._block_id = block_id
-
-    @property
-    def _parle(self):
-        return self._coordinator.parle_blocks[self._block_id]
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        dsp = self._coordinator.dsp
-        parle = self._parle
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"{dsp.serial_number}_{self._block_id}")},
-            name=self._block_id,
-            manufacturer="Biamp",
-            model=parle.block_type,
             via_device=(DOMAIN, dsp.serial_number),
         )
 

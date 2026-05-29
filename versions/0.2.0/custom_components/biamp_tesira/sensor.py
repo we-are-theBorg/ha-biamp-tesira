@@ -3,17 +3,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import BiampTesiraCoordinator, ParleBlockProxy
-from .entity import BiampParleBlockEntity
+from .coordinator import BiampTesiraCoordinator
+from .entity import BiampTesiraBlockEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,7 +23,7 @@ async def async_setup_entry(
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = []
 
-    for block_id in coordinator.parle_blocks:
+    for block_id in coordinator.parle_block_ids:
         entities += [
             BiampParleAzimuthSensor(coordinator, block_id),
             BiampParleIntensitySensor(coordinator, block_id),
@@ -38,14 +35,16 @@ async def async_setup_entry(
 
 
 # ---------------------------------------------------------------------------
-# Azimuth sensor  — primary direction of the loudest active talker
+# All Parlé sensor entities extend BiampTesiraBlockEntity directly — now that
+# ParleBeamtracking is a proper pytesira module, the block lives in
+# coordinator.dsp.blocks like any other block type.
 # ---------------------------------------------------------------------------
 
-class BiampParleAzimuthSensor(BiampParleBlockEntity, SensorEntity):
+class BiampParleAzimuthSensor(BiampTesiraBlockEntity, SensorEntity):
     """
-    Primary azimuth of the most intense active beam (degrees, 0-360°).
-    0° = directly in front of the Biamp logo, increasing counter-clockwise.
-    None when no beam is above the active threshold.
+    Primary azimuth of the loudest active beam (0-360°, CCW from Biamp logo).
+    State is None when no beam is above the active-talker threshold (≥0.5).
+    Extra attributes expose the full beam array and elevation data.
     """
 
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -59,29 +58,24 @@ class BiampParleAzimuthSensor(BiampParleBlockEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        return self._parle.primary_azimuth
+        return self._block.primary_azimuth
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        p: ParleBlockProxy = self._parle
+        b = self._block
         return {
-            "all_beams": p.beams,
-            "active_beams": p.active_beams,
-            "elevation": p.primary_elevation,
-            "segments_active": p.segments_active,
-            "block_type": p.block_type,
+            "all_beams": b.beams,
+            "active_beams": b.active_beams,
+            "elevation": b.primary_elevation,
+            "segments_active": b.segments_active,
         }
 
 
-# ---------------------------------------------------------------------------
-# Intensity sensor  — 0.0-1.0 loudness of the dominant active beam
-# ---------------------------------------------------------------------------
-
-class BiampParleIntensitySensor(BiampParleBlockEntity, SensorEntity):
+class BiampParleIntensitySensor(BiampTesiraBlockEntity, SensorEntity):
     """
-    Normalised intensity of the most intense active beam (0.0 – 1.0).
+    Normalised intensity of the loudest active beam (0.0–1.0).
     Beams at or above 0.5 are considered active talkers.
-    None when no beam is above the threshold.
+    State is None when no beam is above the threshold.
     """
 
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -94,22 +88,18 @@ class BiampParleIntensitySensor(BiampParleBlockEntity, SensorEntity):
 
     @property
     def native_value(self) -> float | None:
-        return self._parle.primary_intensity
+        return self._block.primary_intensity
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"all_beams": self._parle.beams}
+        return {"all_beams": self._block.beams}
 
 
-# ---------------------------------------------------------------------------
-# Zone sensor  — maps primary azimuth to a named room zone
-# ---------------------------------------------------------------------------
-
-class BiampParleZoneSensor(BiampParleBlockEntity, SensorEntity):
+class BiampParleZoneSensor(BiampTesiraBlockEntity, SensorEntity):
     """
     Named zone of the active talker, derived by mapping primary azimuth to the
-    configured azimuth→zone ranges.  "Unknown" when no active beam or the
-    azimuth falls outside every configured range.  "None" when no talker is active.
+    azimuth→zone ranges configured in the integration options.
+    State is None when no beam is above the active-talker threshold.
     """
 
     _attr_icon = "mdi:map-marker-radius"
@@ -121,7 +111,7 @@ class BiampParleZoneSensor(BiampParleBlockEntity, SensorEntity):
 
     @property
     def native_value(self) -> str | None:
-        az = self._parle.primary_azimuth
+        az = self._block.primary_azimuth
         if az is None:
             return None
         return self._coordinator.azimuth_to_zone(az)
@@ -129,19 +119,15 @@ class BiampParleZoneSensor(BiampParleBlockEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
-            "azimuth": self._parle.primary_azimuth,
+            "azimuth": self._block.primary_azimuth,
             "zone_map": self._coordinator.zones,
         }
 
 
-# ---------------------------------------------------------------------------
-# Talker count sensor  — how many simultaneous active beams
-# ---------------------------------------------------------------------------
-
-class BiampParleTalkerCountSensor(BiampParleBlockEntity, SensorEntity):
+class BiampParleTalkerCountSensor(BiampTesiraBlockEntity, SensorEntity):
     """
-    Number of beams currently above the active-talker intensity threshold (≥0.5).
-    Useful for detecting whether a room is empty, has one speaker, or multiple.
+    Number of beams simultaneously above the active-talker intensity threshold.
+    Useful for detecting whether a room is empty, has one speaker, or several.
     """
 
     _attr_state_class = SensorStateClass.MEASUREMENT
@@ -154,8 +140,8 @@ class BiampParleTalkerCountSensor(BiampParleBlockEntity, SensorEntity):
 
     @property
     def native_value(self) -> int:
-        return self._parle.talker_count
+        return self._block.talker_count
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"active_beams": self._parle.active_beams}
+        return {"active_beams": self._block.active_beams}
