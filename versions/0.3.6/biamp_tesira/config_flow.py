@@ -174,9 +174,12 @@ class BiampTesiraOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        current_enabled: list[str] = self._entry.options.get(
-            CONF_ENABLED_BLOCK_TYPES, list(SUPPORTED_BLOCK_TYPES.keys())
-        )
+        current_enabled: list[str] = [
+            t for t in self._entry.options.get(
+                CONF_ENABLED_BLOCK_TYPES, list(SUPPORTED_BLOCK_TYPES.keys())
+            )
+            if t in SUPPORTED_BLOCK_TYPES
+        ]
         current_presets: str = self._entry.options.get(CONF_PRESETS, "")
         return self.async_show_form(
             step_id="init",
