@@ -15,6 +15,13 @@
           "host_key_check": "Disable to trust the DSP on first connect (recommended for most setups)",
           "block_map_path": "Path to cache DSP block map for faster restarts. Leave blank for auto-generated path."
         }
+      },
+      "blocks": {
+        "title": "Block Type Configuration",
+        "description": "Select which Tesira DSP block types to load. Unchecked types are skipped entirely — not subscribed to and not added to Home Assistant. Reduces startup time on large systems.",
+        "data": {
+          "enabled_block_types": "Active Block Types"
+        }
       }
     },
     "error": {
@@ -23,6 +30,17 @@
     },
     "abort": {
       "already_configured": "This Tesira DSP is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Biamp Tesira Block Types",
+        "description": "Uncheck block types to exclude them. Changes take effect after the integration reloads automatically.",
+        "data": {
+          "enabled_block_types": "Active Block Types"
+        }
+      }
     }
   }
 }
