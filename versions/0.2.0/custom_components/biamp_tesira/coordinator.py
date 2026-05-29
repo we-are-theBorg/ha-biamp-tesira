@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-_PARLE_BLOCK_TYPE = "ParleBeamtracking"
+_PARLE_BLOCK_TYPE = "BFMic"
 
 
 class BiampTesiraCoordinator:

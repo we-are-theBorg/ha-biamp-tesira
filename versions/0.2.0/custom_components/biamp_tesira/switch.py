@@ -14,7 +14,7 @@ from .entity import BiampTesiraBlockEntity
 _LOGGER = logging.getLogger(__name__)
 
 # Block types with per-channel mute via BaseLevelMute or BaseLevelMuteNoSubscription.
-_CHANNEL_MUTE_TYPES = ("LevelControl", "MuteControl", "DanteInput", "DanteOutput", "AudioOutput")
+_CHANNEL_MUTE_TYPES = ("LevelControl", "MuteControl", "DanteInput", "DanteOutput", "AudioOutput", "BFMic")
 
 # Block types that have a top-level muted property (no channel index).
 _BLOCK_MUTE_TYPES = ("SourceSelector",)

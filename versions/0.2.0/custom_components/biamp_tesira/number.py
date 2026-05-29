@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 # Block types that expose per-channel level (all extend BaseLevelMute)
-_LEVEL_BLOCK_TYPES = ("LevelControl", "DanteInput", "DanteOutput")
+_LEVEL_BLOCK_TYPES = ("LevelControl", "DanteInput", "DanteOutput", "BFMic")
 
 
 async def async_setup_entry(
