@@ -22,13 +22,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[SelectEntity] = []
 
-    for block_id, block in coordinator.dsp.blocks.items():
-        if type(block).__name__ == "SourceSelector":
-            entities.append(BiampSourceSelectEntity(coordinator, block_id))
+    async def _async_add_when_ready() -> None:
+        await coordinator.async_wait_ready()
+        entities: list[SelectEntity] = []
 
-    async_add_entities(entities)
+        for block_id, block in coordinator.dsp.blocks.items():
+            if type(block).__name__ == "SourceSelector":
+                entities.append(BiampSourceSelectEntity(coordinator, block_id))
+
+        async_add_entities(entities)
+
+    entry.async_create_background_task(
+        hass, _async_add_when_ready(), f"biamp_setup_select_{entry.entry_id}"
+    )
 
 
 class BiampSourceSelectEntity(BiampTesiraBlockEntity, SelectEntity):

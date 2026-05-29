@@ -21,33 +21,40 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[SensorEntity] = []
 
-    for block_id in coordinator.parle_block_ids:
-        entities += [
-            BiampParleAzimuthSensor(coordinator, block_id),
-            BiampParleIntensitySensor(coordinator, block_id),
-            BiampParleZoneSensor(coordinator, block_id),
-            BiampParleTalkerCountSensor(coordinator, block_id),
-        ]
+    async def _async_add_when_ready() -> None:
+        await coordinator.async_wait_ready()
+        entities: list[SensorEntity] = []
 
-    for block_id, block in coordinator.dsp.blocks.items():
-        block_type = type(block).__name__
+        for block_id in coordinator.parle_block_ids:
+            entities += [
+                BiampParleAzimuthSensor(coordinator, block_id),
+                BiampParleIntensitySensor(coordinator, block_id),
+                BiampParleZoneSensor(coordinator, block_id),
+                BiampParleTalkerCountSensor(coordinator, block_id),
+            ]
 
-        if block_type == "AudioMeter":
-            for ch in block.levels:
-                label = block.labels.get(ch) or f"Ch{ch}"
-                entities.append(
-                    BiampAudioMeterSensor(coordinator, block_id, ch, label)
-                )
+        for block_id, block in coordinator.dsp.blocks.items():
+            block_type = type(block).__name__
 
-        elif block_type == "Compressor":
-            entities.append(BiampCompressorGRSensor(coordinator, block_id))
+            if block_type == "AudioMeter":
+                for ch in block.levels:
+                    label = block.labels.get(ch) or f"Ch{ch}"
+                    entities.append(
+                        BiampAudioMeterSensor(coordinator, block_id, ch, label)
+                    )
 
-        elif block_type == "BluetoothControlStatus":
-            entities.append(BiampBtConnectedSensor(coordinator, block_id))
+            elif block_type == "Compressor":
+                entities.append(BiampCompressorGRSensor(coordinator, block_id))
 
-    async_add_entities(entities)
+            elif block_type == "BluetoothControlStatus":
+                entities.append(BiampBtConnectedSensor(coordinator, block_id))
+
+        async_add_entities(entities)
+
+    entry.async_create_background_task(
+        hass, _async_add_when_ready(), f"biamp_setup_sensor_{entry.entry_id}"
+    )
 
 
 # ---------------------------------------------------------------------------

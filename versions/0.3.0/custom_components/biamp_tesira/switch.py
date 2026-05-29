@@ -39,56 +39,59 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[SwitchEntity] = []
 
-    for block_id, block in coordinator.dsp.blocks.items():
-        block_type = type(block).__name__
+    async def _async_add_when_ready() -> None:
+        await coordinator.async_wait_ready()
+        entities: list[SwitchEntity] = []
 
-        # Per-channel mute switches
-        if block_type in _CHANNEL_MUTE_TYPES:
-            polled = block_type in _POLLED_MUTE_TYPES
-            for channel_idx, channel in block.channels.items():
-                try:
-                    _ = channel.muted
-                except AttributeError:
-                    continue
-                entities.append(
-                    BiampChannelMuteSwitch(coordinator, block_id, channel_idx, polled)
-                )
+        for block_id, block in coordinator.dsp.blocks.items():
+            block_type = type(block).__name__
 
-        # Block-level mute (SourceSelector)
-        elif block_type in _BLOCK_MUTE_TYPES:
-            entities.append(BiampBlockMuteSwitch(coordinator, block_id))
-
-        # Block-level bypass switches
-        if block_type in _BLOCK_BYPASS_TYPES:
-            entities.append(BiampBlockBypassSwitch(coordinator, block_id))
-
-        # MatrixMixer: input mutes, output mutes, crosspoint routing
-        if block_type == "MatrixMixer":
-            for in_idx in block.inputs:
-                entities.append(
-                    BiampMatrixStripMuteSwitch(
-                        coordinator, block_id, in_idx, is_input=True
+            if block_type in _CHANNEL_MUTE_TYPES:
+                polled = block_type in _POLLED_MUTE_TYPES
+                for channel_idx, channel in block.channels.items():
+                    try:
+                        _ = channel.muted
+                    except AttributeError:
+                        continue
+                    entities.append(
+                        BiampChannelMuteSwitch(coordinator, block_id, channel_idx, polled)
                     )
-                )
-            for out_idx in block.outputs:
-                entities.append(
-                    BiampMatrixStripMuteSwitch(
-                        coordinator, block_id, out_idx, is_input=False
-                    )
-                )
-            total = block.num_inputs * block.num_outputs
-            if total <= _CROSSPOINT_ENTITY_MAX:
-                for in_idx in range(1, block.num_inputs + 1):
-                    for out_idx in range(1, block.num_outputs + 1):
-                        entities.append(
-                            BiampMatrixCrosspointSwitch(
-                                coordinator, block_id, in_idx, out_idx
-                            )
+
+            elif block_type in _BLOCK_MUTE_TYPES:
+                entities.append(BiampBlockMuteSwitch(coordinator, block_id))
+
+            if block_type in _BLOCK_BYPASS_TYPES:
+                entities.append(BiampBlockBypassSwitch(coordinator, block_id))
+
+            if block_type == "MatrixMixer":
+                for in_idx in block.inputs:
+                    entities.append(
+                        BiampMatrixStripMuteSwitch(
+                            coordinator, block_id, in_idx, is_input=True
                         )
+                    )
+                for out_idx in block.outputs:
+                    entities.append(
+                        BiampMatrixStripMuteSwitch(
+                            coordinator, block_id, out_idx, is_input=False
+                        )
+                    )
+                total = block.num_inputs * block.num_outputs
+                if total <= _CROSSPOINT_ENTITY_MAX:
+                    for in_idx in range(1, block.num_inputs + 1):
+                        for out_idx in range(1, block.num_outputs + 1):
+                            entities.append(
+                                BiampMatrixCrosspointSwitch(
+                                    coordinator, block_id, in_idx, out_idx
+                                )
+                            )
 
-    async_add_entities(entities)
+        async_add_entities(entities)
+
+    entry.async_create_background_task(
+        hass, _async_add_when_ready(), f"biamp_setup_switch_{entry.entry_id}"
+    )
 
 
 # ---------------------------------------------------------------------------

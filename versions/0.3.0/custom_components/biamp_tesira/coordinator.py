@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -8,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
     CONF_BLOCK_MAP_PATH,
@@ -32,6 +32,15 @@ _LOGGER = logging.getLogger(__name__)
 
 _PARLE_BLOCK_TYPE = "BFMic"
 
+# Seconds between subscription-renewal passes. 5s is too short for large systems
+# (105 blocks × many channels = hundreds of serial TTP commands per cycle).
+# 30s is a practical floor; the DSP subscription TTL is much longer.
+_DEVICE_REFRESH_INTERVAL = 30
+
+# Retry delays for background reconnect: 5s, 10s, 20s, … capped at 5 min
+_RETRY_INITIAL = 5
+_RETRY_MAX = 300
+
 
 class BiampTesiraCoordinator:
     """Manages a single Biamp Tesira DSP connection and distributes updates to entities."""
@@ -43,8 +52,26 @@ class BiampTesiraCoordinator:
         self.available = False
         self._listeners: list[Callable[[], None]] = []
         self._block_listeners: dict[str, list[Callable[[], None]]] = {}
-        # Debounce tracking for Parlé talker-location events
         self._parle_last_az: dict[str, float] = {}
+
+        # Set by _async_connect_loop when the DSP is fully connected.
+        # Platforms await this before building entity lists.
+        self._ready_event: asyncio.Event | None = None
+
+    # ------------------------------------------------------------------
+    # Ready-state helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def _ready(self) -> asyncio.Event:
+        # Lazy creation ensures we're always on the HA event loop.
+        if self._ready_event is None:
+            self._ready_event = asyncio.Event()
+        return self._ready_event
+
+    async def async_wait_ready(self) -> None:
+        """Await until the DSP is connected and all blocks are loaded."""
+        await self._ready.wait()
 
     # ------------------------------------------------------------------
     # Convenience accessors
@@ -52,7 +79,6 @@ class BiampTesiraCoordinator:
 
     @property
     def parle_block_ids(self) -> set[str]:
-        """Block IDs whose pytesira type is ParleBeamtracking."""
         if self.dsp is None:
             return set()
         return {
@@ -81,21 +107,66 @@ class BiampTesiraCoordinator:
             if start <= end:
                 if start <= azimuth <= end:
                     return name
-            else:  # wraps around 0° (e.g. North: 315→45)
+            else:
                 if azimuth >= start or azimuth <= end:
                     return name
         return "Unknown"
 
     # ------------------------------------------------------------------
-    # Setup / teardown
+    # Setup — non-blocking: starts background connection task
     # ------------------------------------------------------------------
 
     async def async_setup(self) -> None:
-        try:
-            await self.hass.async_add_executor_job(self._connect)
-        except Exception as exc:
-            _LOGGER.error("Failed to connect to Tesira DSP: %s", exc)
-            raise ConfigEntryNotReady(f"Cannot connect: {exc}") from exc
+        """Kick off the background connection loop and return immediately.
+
+        async_setup_entry will complete while the DSP is still connecting.
+        Platform entity-setup tasks await async_wait_ready() before creating
+        entities, so HA never sees a blocked setup.
+        """
+        self.hass.async_create_task(
+            self._async_connect_loop(),
+            name=f"biamp_tesira_connect_{self.entry.entry_id}",
+        )
+
+    # ------------------------------------------------------------------
+    # Background connect loop — retries with exponential back-off
+    # ------------------------------------------------------------------
+
+    async def _async_connect_loop(self) -> None:
+        delay = _RETRY_INITIAL
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                _LOGGER.debug(
+                    "Connecting to Tesira DSP at %s (attempt %d)",
+                    self.entry.data.get(CONF_HOSTNAME, "?"),
+                    attempt,
+                )
+                await self.hass.async_add_executor_job(self._connect)
+                # Success
+                self.available = True
+                self._ready.set()
+                _LOGGER.info(
+                    "Tesira coordinator ready (%d blocks)", len(self.dsp.blocks)
+                )
+                # Wake up any entity that registered a listener before connect
+                self._async_notify_all()
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self.available = False
+                _LOGGER.warning(
+                    "Tesira DSP connection failed (attempt %d), retrying in %ds: %s",
+                    attempt, delay, exc,
+                )
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, _RETRY_MAX)
+
+    # ------------------------------------------------------------------
+    # Blocking connect — runs in executor thread
+    # ------------------------------------------------------------------
 
     def _connect(self) -> None:
         from pytesira.dsp import DSP
@@ -104,7 +175,10 @@ class BiampTesiraCoordinator:
         cfg = self.entry.data
         block_map_path = cfg.get(CONF_BLOCK_MAP_PATH) or self._default_block_map_path()
 
-        dsp = DSP(block_map=block_map_path if os.path.exists(block_map_path) else None)
+        dsp = DSP(
+            block_map=block_map_path if os.path.exists(block_map_path) else None,
+            device_refresh_interval=_DEVICE_REFRESH_INTERVAL,
+        )
         ssh = SSH(
             hostname=cfg[CONF_HOSTNAME],
             username=cfg[CONF_USERNAME],
@@ -114,7 +188,6 @@ class BiampTesiraCoordinator:
         )
         dsp.connect(backend=ssh)
         self.dsp = dsp
-        self.available = True
 
         try:
             dsp.save_block_map(block_map_path)
@@ -130,7 +203,7 @@ class BiampTesiraCoordinator:
             len(dsp.blocks), parle_count,
         )
 
-        # Register callbacks on all blocks (including ParleBeamtracking)
+        # Register update callbacks on all blocks
         for block_id, block in dsp.blocks.items():
             block.register_callback(
                 lambda _, bid=block_id: self._on_block_update(bid),
@@ -142,21 +215,25 @@ class BiampTesiraCoordinator:
             self.hass.config.config_dir, f"biamp_tesira_{self.entry.entry_id}"
         )
 
+    # ------------------------------------------------------------------
+    # Block-update callbacks (called from pytesira threads)
+    # ------------------------------------------------------------------
+
     def _on_block_update(self, block_id: str) -> None:
         self.hass.loop.call_soon_threadsafe(self._async_dispatch, block_id)
 
-    # ------------------------------------------------------------------
-    # HA-loop dispatching
-    # ------------------------------------------------------------------
-
     @callback
     def _async_dispatch(self, block_id: str) -> None:
-        # Fire biamp_tesira_talker_location for Parlé beam changes (debounced).
         if block_id in self.parle_block_ids:
             self._maybe_fire_talker_event(block_id)
-
         for cb in list(self._block_listeners.get(block_id, [])):
             cb()
+        for cb in list(self._listeners):
+            cb()
+
+    @callback
+    def _async_notify_all(self) -> None:
+        """Notify every registered listener — used on first-connect."""
         for cb in list(self._listeners):
             cb()
 
@@ -182,8 +259,14 @@ class BiampTesiraCoordinator:
             },
         )
 
+    # ------------------------------------------------------------------
+    # Listener registration
+    # ------------------------------------------------------------------
+
     @callback
-    def async_add_listener(self, update_callback: Callable[[], None]) -> Callable[[], None]:
+    def async_add_listener(
+        self, update_callback: Callable[[], None]
+    ) -> Callable[[], None]:
         self._listeners.append(update_callback)
 
         @callback

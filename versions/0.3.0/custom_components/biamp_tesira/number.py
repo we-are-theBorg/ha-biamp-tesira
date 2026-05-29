@@ -47,57 +47,61 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[NumberEntity] = []
 
-    for block_id, block in coordinator.dsp.blocks.items():
-        block_type = type(block).__name__
+    async def _async_add_when_ready() -> None:
+        await coordinator.async_wait_ready()
+        entities: list[NumberEntity] = []
 
-        # Standard channel-level entities
-        if block_type in _LEVEL_BLOCK_TYPES:
-            polled = block_type in _POLLED_LEVEL_TYPES
-            for channel_idx in block.channels:
-                channel = block.channels[channel_idx]
-                try:
-                    min_l = float(channel.min_level)
-                    max_l = float(channel.max_level)
-                except AttributeError:
-                    min_l, max_l = -100.0, 12.0
-                entities.append(
-                    BiampLevelNumber(
-                        coordinator, block_id, channel_idx, min_l, max_l, polled
-                    )
-                )
+        for block_id, block in coordinator.dsp.blocks.items():
+            block_type = type(block).__name__
 
-        # MatrixMixer input and output strip levels
-        elif block_type == "MatrixMixer":
-            for in_idx, inp in block.inputs.items():
-                entities.append(
-                    BiampMatrixStripLevelNumber(
-                        coordinator, block_id,
-                        strip_idx=in_idx, is_input=True,
-                        min_level=inp.min_level, max_level=inp.max_level,
-                    )
-                )
-            for out_idx, out in block.outputs.items():
-                entities.append(
-                    BiampMatrixStripLevelNumber(
-                        coordinator, block_id,
-                        strip_idx=out_idx, is_input=False,
-                        min_level=out.min_level, max_level=out.max_level,
-                    )
-                )
-
-        # Block-level numeric parameters (threshold, delay, etc.)
-        if block_type in _BLOCK_PARAM_TYPES:
-            for attr, unit, mn, mx, step, label in _BLOCK_PARAM_TYPES[block_type]:
-                if hasattr(block, attr):
+            if block_type in _LEVEL_BLOCK_TYPES:
+                polled = block_type in _POLLED_LEVEL_TYPES
+                for channel_idx in block.channels:
+                    channel = block.channels[channel_idx]
+                    try:
+                        min_l = float(channel.min_level)
+                        max_l = float(channel.max_level)
+                    except AttributeError:
+                        min_l, max_l = -100.0, 12.0
                     entities.append(
-                        BiampBlockParamNumber(
-                            coordinator, block_id, attr, unit, mn, mx, step, label
+                        BiampLevelNumber(
+                            coordinator, block_id, channel_idx, min_l, max_l, polled
                         )
                     )
 
-    async_add_entities(entities)
+            elif block_type == "MatrixMixer":
+                for in_idx, inp in block.inputs.items():
+                    entities.append(
+                        BiampMatrixStripLevelNumber(
+                            coordinator, block_id,
+                            strip_idx=in_idx, is_input=True,
+                            min_level=inp.min_level, max_level=inp.max_level,
+                        )
+                    )
+                for out_idx, out in block.outputs.items():
+                    entities.append(
+                        BiampMatrixStripLevelNumber(
+                            coordinator, block_id,
+                            strip_idx=out_idx, is_input=False,
+                            min_level=out.min_level, max_level=out.max_level,
+                        )
+                    )
+
+            if block_type in _BLOCK_PARAM_TYPES:
+                for attr, unit, mn, mx, step, label in _BLOCK_PARAM_TYPES[block_type]:
+                    if hasattr(block, attr):
+                        entities.append(
+                            BiampBlockParamNumber(
+                                coordinator, block_id, attr, unit, mn, mx, step, label
+                            )
+                        )
+
+        async_add_entities(entities)
+
+    entry.async_create_background_task(
+        hass, _async_add_when_ready(), f"biamp_setup_number_{entry.entry_id}"
+    )
 
 
 # ---------------------------------------------------------------------------
