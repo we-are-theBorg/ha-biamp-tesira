@@ -26,26 +26,37 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[SwitchEntity] = []
 
-    for block_id, block in coordinator.dsp.blocks.items():
-        block_type = type(block).__name__
+    async def _async_add_when_ready() -> None:
+        await coordinator.async_wait_ready()
+        entities: list[SwitchEntity] = []
 
-        if block_type in _CHANNEL_MUTE_TYPES:
-            for channel_idx, channel in block.channels.items():
-                try:
-                    _ = channel.muted  # probe attribute existence
-                except AttributeError:
-                    continue
-                poll = block_type == "AudioOutput"
-                entities.append(
-                    BiampChannelMuteSwitch(coordinator, block_id, channel_idx, poll)
-                )
+        for block_id, block in coordinator.dsp.blocks.items():
+            block_type = type(block).__name__
 
-        elif block_type in _BLOCK_MUTE_TYPES:
-            entities.append(BiampBlockMuteSwitch(coordinator, block_id))
+            try:
+                if block_type in _CHANNEL_MUTE_TYPES:
+                    for channel_idx, channel in block.channels.items():
+                        try:
+                            _ = channel.muted  # probe attribute existence
+                        except AttributeError:
+                            continue
+                        poll = block_type == "AudioOutput"
+                        entities.append(
+                            BiampChannelMuteSwitch(coordinator, block_id, channel_idx, poll)
+                        )
 
-    async_add_entities(entities)
+                elif block_type in _BLOCK_MUTE_TYPES:
+                    entities.append(BiampBlockMuteSwitch(coordinator, block_id))
+
+            except Exception as exc:
+                _LOGGER.warning("Skipping switch entities for %s: %s", block_id, exc)
+
+        async_add_entities(entities)
+
+    entry.async_create_background_task(
+        hass, _async_add_when_ready(), f"biamp_setup_switch_{entry.entry_id}"
+    )
 
 
 class BiampChannelMuteSwitch(BiampTesiraBlockEntity, SwitchEntity):

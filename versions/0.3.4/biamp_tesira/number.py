@@ -30,23 +30,35 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: BiampTesiraCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[NumberEntity] = []
 
-    for block_id, block in coordinator.dsp.blocks.items():
-        block_type = type(block).__name__
-        if block_type in _LEVEL_BLOCK_TYPES:
-            for channel_idx in block.channels:
-                channel = block.channels[channel_idx]
-                try:
-                    min_l = float(channel.min_level)
-                    max_l = float(channel.max_level)
-                except AttributeError:
-                    min_l, max_l = -100.0, 12.0
-                entities.append(
-                    BiampLevelNumber(coordinator, block_id, channel_idx, min_l, max_l)
-                )
+    async def _async_add_when_ready() -> None:
+        await coordinator.async_wait_ready()
+        entities: list[NumberEntity] = []
 
-    async_add_entities(entities)
+        for block_id, block in coordinator.dsp.blocks.items():
+            block_type = type(block).__name__
+            if block_type in _LEVEL_BLOCK_TYPES:
+                for channel_idx in block.channels:
+                    channel = block.channels[channel_idx]
+                    try:
+                        min_l = float(channel.min_level)
+                        max_l = float(channel.max_level)
+                    except AttributeError:
+                        min_l, max_l = -100.0, 12.0
+                    try:
+                        entities.append(
+                            BiampLevelNumber(coordinator, block_id, channel_idx, min_l, max_l)
+                        )
+                    except Exception as exc:
+                        _LOGGER.warning(
+                            "Skipping level entity for %s ch%d: %s", block_id, channel_idx, exc
+                        )
+
+        async_add_entities(entities)
+
+    entry.async_create_background_task(
+        hass, _async_add_when_ready(), f"biamp_setup_number_{entry.entry_id}"
+    )
 
 
 class BiampLevelNumber(BiampTesiraBlockEntity, NumberEntity):
