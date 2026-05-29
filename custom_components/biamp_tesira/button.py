@@ -15,8 +15,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _parse_preset_names(raw: str) -> list[str]:
-    """Split newline-separated preset names, stripping blanks."""
-    return [n.strip() for n in raw.splitlines() if n.strip()]
+    """Split comma- or newline-separated preset names, stripping blanks."""
+    return [n.strip() for n in raw.replace("\n", ",").split(",") if n.strip()]
 
 
 async def async_setup_entry(

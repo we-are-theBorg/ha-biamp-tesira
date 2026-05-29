@@ -53,11 +53,6 @@ _BLOCK_TYPE_SELECTOR = selector.SelectSelector(
 )
 
 
-_PRESET_NAMES_SELECTOR = selector.TextSelector(
-    selector.TextSelectorConfig(multiline=True)
-)
-
-
 def _block_type_schema(current: list[str] | None = None) -> vol.Schema:
     default = current if current is not None else list(SUPPORTED_BLOCK_TYPES.keys())
     return vol.Schema(
@@ -75,7 +70,7 @@ def _options_schema(
     return vol.Schema(
         {
             vol.Optional(CONF_ENABLED_BLOCK_TYPES, default=enabled): _BLOCK_TYPE_SELECTOR,
-            vol.Optional(CONF_PRESETS, default=current_presets): _PRESET_NAMES_SELECTOR,
+            vol.Optional(CONF_PRESETS, default=current_presets): str,
         }
     )
 

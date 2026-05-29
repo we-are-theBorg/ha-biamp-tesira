@@ -42,7 +42,7 @@
           "presets": "Preset Names"
         },
         "data_description": {
-          "presets": "Enter one preset name per line (exactly as defined in the Tesira design file). Each name becomes a button entity in Home Assistant."
+          "presets": "Comma-separated preset names, exactly as defined in the Tesira design file. Each name becomes a button entity in Home Assistant. Example: Main Spaces Only, Whole Home"
         }
       }
     }
