@@ -154,3 +154,45 @@ Payload: instance_tag, azimuth, intensity, elevation, active_beams, talker_count
 Stored in config entry options as JSON string (CONF_ZONES).
 Default: 4 quadrants N/S/E/W. Custom: `{"window": [0, 90], "door": [90, 180], ...}`.
 Ranges wrap around 0 when start > end.
+
+## Future: MediaPlayer Platform (not yet implemented)
+Combine a LevelControl block + its associated MuteControl into a single
+`MediaPlayerEntity` instead of separate number/switch entities. Useful for
+rooms where one volume fader + one mute is the natural control surface.
+
+### Planned design
+- New platform file: `media_player.py`
+- Discovery: look for LevelControl blocks that share a name prefix with a MuteControl
+  (e.g. `RoomA-Vol` + `RoomA-Mute`), or configure pairings in options flow
+- Entity features: `SUPPORT_VOLUME_SET | SUPPORT_VOLUME_MUTE | SUPPORT_VOLUME_STEP`
+- `media_player.volume_level` → normalized 0.0–1.0 mapped from dB min/max
+- `media_player.is_volume_muted` → channel.muted
+- Add `"media_player"` to PLATFORMS in `__init__.py` when ready
+- unique_id: `{serial_number}_{block_id}_media_player`
+
+## Future: Voice Pipeline Integration (not yet implemented)
+Use Parlé beamtracking to know who was talking when an Assist pipeline run starts,
+then surface that zone as context for LLM system prompts.
+
+### Planned design
+
+**Snapshot on pipeline start**
+- Listen for `assist_pipeline.run_start` event
+- At that moment read the current beam state from each BFMic block
+- Store snapshot in a dict keyed by `run_id`: `{run_id: {instance_tag, azimuth, zone, intensity}}`
+
+**Expose current talker zone**
+- `input_text.biamp_current_talker_zone` — updated from snapshot dict on each run-start
+- Alternatively a `sensor.biamp_current_talker_zone` with state = zone name and
+  attributes = full beam snapshot
+
+**Zone-to-room template sensor**
+- Template sensor that maps `primary_azimuth` → named zone string
+- Zone names and azimuth ranges configurable in options flow (already stored in CONF_ZONES)
+
+**Implementation notes**
+- The event listener must be registered in coordinator or a dedicated hass.bus listener
+- Beam snapshot should be taken synchronously from the already-cached block state
+  (no extra TTP round-trip needed — BFMic subscriptions keep state current)
+- run_id is available in the event payload as `event.data["run_id"]`
+- Clean up stale run_id entries after a TTL (e.g. 60 s) to avoid memory growth
